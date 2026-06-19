@@ -726,15 +726,23 @@
             <div class="subtitle">基于多维度数据智能预测比赛结果</div>
         </div>
 
-        <!-- API Key Panel -->
+        <!-- API Key Panel - 始终可见 -->
         <div class="api-panel" id="apiPanel">
-            <label>🔑 API Key（来自 <a href="https://www.football-data.org/" target="_blank">football-data.org</a>，免费注册）</label>
-            <div class="api-input-row">
-                <input type="password" id="apiKeyInput" placeholder="输入你的 football-data.org API Key">
-                <button class="btn btn-primary" onclick="saveApiKey()">保存</button>
-                <button class="btn btn-secondary" onclick="testApiConnection()" id="testBtn">🔍 测试连接</button>
+            <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleApiPanel()">
+                <label style="cursor:pointer;margin-bottom:0;">🔑 API Key（<a href="https://www.football-data.org/" target="_blank">football-data.org</a>）</label>
+                <div>
+                    <span id="apiKeyStatus" style="font-size:0.75rem;color:var(--text-secondary);margin-right:8px;"></span>
+                    <span id="apiToggleIcon" style="font-size:0.8rem;color:var(--text-secondary);">▼</span>
+                </div>
             </div>
-            <div class="api-hint">API Key 仅保存在浏览器本地（localStorage），不会上传到任何服务器。免费版限制 10 请求/分钟。</div>
+            <div id="apiKeyBody">
+                <div class="api-input-row" style="margin-top:8px;">
+                    <input type="password" id="apiKeyInput" placeholder="输入你的 football-data.org API Key">
+                    <button class="btn btn-primary" onclick="saveApiKey()">保存</button>
+                    <button class="btn btn-secondary" onclick="testApiConnection()" id="testBtn">🔍 测试</button>
+                </div>
+                <div class="api-hint">Key 保存在浏览器本地（localStorage），换浏览器/设备需重新输入。免费版 10次/分钟。</div>
+            </div>
         </div>
 
         <!-- Error -->
@@ -945,17 +953,33 @@
         document.addEventListener('DOMContentLoaded', () => {
             if (API_KEY) {
                 document.getElementById('apiKeyInput').value = API_KEY;
-                document.getElementById('apiPanel').style.display = 'none';
                 loadCompetitions();
             }
+            updateApiKeyStatus();
         });
+
+        function updateApiKeyStatus() {
+            const statusEl = document.getElementById('apiKeyStatus');
+            const hasKey = !!localStorage.getItem('football_api_key');
+            statusEl.textContent = hasKey ? '✅ 已保存' : '⚠️ 未设置';
+            statusEl.style.color = hasKey ? 'var(--primary)' : '#c62828';
+        }
+
+        function toggleApiPanel() {
+            const body = document.getElementById('apiKeyBody');
+            const icon = document.getElementById('apiToggleIcon');
+            const isHidden = body.style.display === 'none';
+            body.style.display = isHidden ? '' : 'none';
+            icon.textContent = isHidden ? '▼' : '▶';
+        }
 
         function saveApiKey() {
             const key = document.getElementById('apiKeyInput').value.trim();
             if (!key) return;
             API_KEY = key;
             localStorage.setItem('football_api_key', key);
-            document.getElementById('apiPanel').style.display = 'none';
+            updateApiKeyStatus();
+            showError('✅ API Key 已保存');
             loadCompetitions();
         }
 
