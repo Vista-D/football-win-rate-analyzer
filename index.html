@@ -1,0 +1,2075 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>足球比赛实时胜率分析</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --primary: #1b5e20;
+            --primary-light: #4caf50;
+            --primary-dark: #0d3310;
+            --accent: #ff9800;
+            --bg: #f0f2f5;
+            --card-bg: #ffffff;
+            --text: #212121;
+            --text-secondary: #757575;
+            --border: #e0e0e0;
+            --shadow: 0 2px 8px rgba(0,0,0,0.08);
+            --shadow-hover: 0 4px 16px rgba(0,0,0,0.12);
+            --radius: 12px;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 16px;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            padding: 24px 0 16px;
+        }
+        .header h1 {
+            font-size: 1.8rem;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .header .subtitle {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-top: 4px;
+        }
+
+        /* API Key Panel */
+        .api-panel {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: var(--shadow);
+        }
+        .api-panel label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            display: block;
+            margin-bottom: 6px;
+        }
+        .api-input-row {
+            display: flex;
+            gap: 8px;
+        }
+        .api-input-row input {
+            flex: 1;
+            padding: 10px 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .api-input-row input:focus {
+            border-color: var(--primary-light);
+        }
+        .btn {
+            padding: 10px 18px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        .btn-primary:hover { background: var(--primary-dark); }
+        .btn-secondary {
+            background: #e8f5e9;
+            color: var(--primary);
+        }
+        .btn-secondary:hover { background: #c8e6c9; }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .api-hint {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 8px;
+        }
+        .api-hint a { color: var(--primary-light); }
+
+        /* Toolbar */
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .toolbar select {
+            flex: 1;
+            min-width: 140px;
+            padding: 10px 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            background: var(--card-bg);
+            outline: none;
+            cursor: pointer;
+        }
+
+        /* Status bar */
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            padding: 0 4px;
+        }
+        .status-bar .live-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #f44336;
+            border-radius: 50%;
+            margin-right: 6px;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* Score Board */
+        .score-board {
+            background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+            border-radius: var(--radius);
+            padding: 28px 20px;
+            color: white;
+            text-align: center;
+            box-shadow: var(--shadow);
+            margin-bottom: 16px;
+        }
+        .match-status {
+            font-size: 0.85rem;
+            opacity: 0.9;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .match-teams {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        .team-side {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+        .team-logo {
+            width: 64px;
+            height: 64px;
+            background: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .team-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+        .score-center {
+            font-size: 3rem;
+            font-weight: 700;
+            min-width: 100px;
+            letter-spacing: 4px;
+        }
+        .match-time {
+            font-size: 0.8rem;
+            opacity: 0.85;
+            margin-top: 12px;
+        }
+        .match-venue {
+            font-size: 0.75rem;
+            opacity: 0.7;
+            margin-top: 4px;
+        }
+
+        /* Win Rate Panel */
+        .winrate-panel {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            padding: 20px;
+            box-shadow: var(--shadow);
+            margin-bottom: 16px;
+        }
+        .winrate-panel h2 {
+            font-size: 1.1rem;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .winrate-main {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding: 0 8px;
+        }
+        .winrate-team {
+            text-align: center;
+            flex: 1;
+        }
+        .winrate-team .rate-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .winrate-team .rate-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+        .winrate-vs {
+            font-size: 1.2rem;
+            color: var(--text-secondary);
+            padding: 0 16px;
+        }
+        .winrate-bar-bg {
+            height: 24px;
+            background: #e0e0e0;
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            margin-bottom: 20px;
+        }
+        .winrate-bar-home {
+            background: linear-gradient(90deg, var(--primary), var(--primary-light));
+            transition: width 0.8s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .winrate-bar-away {
+            background: linear-gradient(90deg, #1565c0, #42a5f5);
+            transition: width 0.8s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .winrate-draw {
+            text-align: center;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+        }
+        .winrate-draw span {
+            font-weight: 600;
+            color: var(--accent);
+        }
+        .dimension-list {
+            display: grid;
+            gap: 10px;
+        }
+        .dimension-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .dimension-name {
+            width: 80px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+        }
+        .dimension-bars {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .dim-bar-home-wrap, .dim-bar-away-wrap {
+            flex: 1;
+            display: flex;
+            align-items: center;
+        }
+        .dim-bar-home-wrap { justify-content: flex-end; }
+        .dim-bar-home, .dim-bar-away {
+            height: 10px;
+            border-radius: 5px;
+            transition: width 0.6s ease;
+        }
+        .dim-bar-home { background: var(--primary-light); }
+        .dim-bar-away { background: #42a5f5; }
+        .dim-score {
+            font-size: 0.8rem;
+            font-weight: 600;
+            min-width: 28px;
+            text-align: center;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 12px;
+            overflow-x: auto;
+        }
+        .tab-btn {
+            padding: 8px 16px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            cursor: pointer;
+            border-radius: 8px;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+        .tab-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+        .tab-btn:hover:not(.active) {
+            background: #e8f5e9;
+        }
+
+        /* Tab Content */
+        .tab-content {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            padding: 16px;
+            box-shadow: var(--shadow);
+            min-height: 200px;
+        }
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
+
+        /* Tables */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        .data-table th {
+            text-align: left;
+            padding: 10px 8px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            border-bottom: 1px solid var(--border);
+        }
+        .data-table td {
+            padding: 10px 8px;
+            border-bottom: 1px solid var(--border);
+        }
+        .data-table tr:last-child td { border-bottom: none; }
+        .data-table .team-cell {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .badge-w { background: #e8f5e9; color: var(--primary); }
+        .badge-d { background: #fff3e0; color: var(--accent); }
+        .badge-l { background: #ffebee; color: #c62828; }
+
+        /* Standings */
+        .standing-pos {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .pos-1 { background: #ffd700; color: #333; }
+        .pos-2 { background: #c0c0c0; color: #333; }
+        .pos-3 { background: #cd7f32; color: white; }
+        .pos-other { background: #f0f0f0; color: #666; }
+
+        /* Match list for selector */
+        .match-grid {
+            display: grid;
+            gap: 8px;
+        }
+        .match-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.2s;
+            background: var(--card-bg);
+        }
+        .match-card:hover {
+            border-color: var(--primary-light);
+            box-shadow: var(--shadow-hover);
+        }
+        .match-card.selected {
+            border-color: var(--primary);
+            background: #e8f5e9;
+        }
+        .match-card .mc-teams {
+            flex: 1;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        .match-card .mc-score {
+            font-size: 1rem;
+            font-weight: 700;
+            margin: 0 12px;
+            min-width: 50px;
+            text-align: center;
+        }
+        .match-card .mc-status {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            min-width: 60px;
+            text-align: right;
+        }
+        .match-card .mc-status.live {
+            color: #f44336;
+            font-weight: 600;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+        }
+        .spinner {
+            display: inline-block;
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 12px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-secondary);
+        }
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 12px;
+            opacity: 0.5;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .header h1 { font-size: 1.3rem; }
+            .team-logo { width: 48px; height: 48px; font-size: 1.3rem; }
+            .team-name { font-size: 0.9rem; }
+            .score-center { font-size: 2.2rem; min-width: 80px; }
+            .winrate-team .rate-value { font-size: 1.6rem; }
+            .toolbar select { min-width: 100%; }
+            .api-input-row { flex-wrap: wrap; }
+        }
+
+        /* Error message */
+        .error-msg {
+            background: #ffebee;
+            color: #c62828;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            margin-bottom: 12px;
+        }
+
+        /* Head to head */
+        .h2h-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .h2h-item:last-child { border-bottom: none; }
+        .h2h-date { font-size: 0.75rem; color: var(--text-secondary); min-width: 80px; }
+        .h2h-teams { flex: 1; text-align: center; font-size: 0.85rem; }
+        .h2h-result { font-weight: 600; min-width: 40px; text-align: right; }
+
+        /* Screenshot / Video Analysis Panel */
+        .screenshot-panel {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            padding: 20px;
+            box-shadow: var(--shadow);
+            margin-bottom: 16px;
+        }
+        .screenshot-panel h2 {
+            font-size: 1.1rem;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .screenshot-zone {
+            border: 2px dashed var(--border);
+            border-radius: 10px;
+            padding: 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 16px;
+            background: #fafafa;
+            position: relative;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .screenshot-zone:hover {
+            border-color: var(--primary-light);
+            background: #f1f8e9;
+        }
+        .screenshot-zone.dragover {
+            border-color: var(--primary);
+            background: #e8f5e9;
+        }
+        .screenshot-zone-icon {
+            font-size: 2.5rem;
+            margin-bottom: 8px;
+            opacity: 0.6;
+        }
+        .screenshot-zone-text {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        .screenshot-zone img {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 8px;
+        }
+        .screenshot-zone .clear-img {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(0,0,0,0.5);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            cursor: pointer;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .ai-input-area textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 80px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .ai-input-area textarea:focus {
+            border-color: var(--primary-light);
+        }
+        .ai-input-area .hint {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 6px;
+        }
+        .analysis-sliders {
+            margin: 16px 0;
+            display: grid;
+            gap: 12px;
+        }
+        .slider-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .slider-item .slider-label {
+            width: 90px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+        }
+        .slider-item input[type="range"] {
+            flex: 1;
+            -webkit-appearance: none;
+            height: 6px;
+            background: linear-gradient(90deg, #1565c0, #9e9e9e, var(--primary-light));
+            border-radius: 3px;
+            outline: none;
+        }
+        .slider-item input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        }
+        .slider-item .slider-value {
+            min-width: 40px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .analysis-result {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: #e8f5e9;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+        .analysis-result .ar-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        .analysis-result .ar-score {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .analysis-result .ar-direction {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+        .analysis-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .analysis-actions .btn {
+            flex: 1;
+        }
+        .separator-text {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            margin: 16px 0;
+            position: relative;
+        }
+        .separator-text::before,
+        .separator-text::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            width: 35%;
+            height: 1px;
+            background: var(--border);
+        }
+        .separator-text::before { left: 0; }
+        .separator-text::after { right: 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚽ 足球比赛实时胜率分析</h1>
+            <div class="subtitle">基于多维度数据智能预测比赛结果</div>
+        </div>
+
+        <!-- API Key Panel -->
+        <div class="api-panel" id="apiPanel">
+            <label>🔑 API Key（来自 <a href="https://www.football-data.org/" target="_blank">football-data.org</a>，免费注册）</label>
+            <div class="api-input-row">
+                <input type="password" id="apiKeyInput" placeholder="输入你的 football-data.org API Key">
+                <button class="btn btn-primary" onclick="saveApiKey()">保存</button>
+                <button class="btn btn-secondary" onclick="testApiConnection()" id="testBtn">🔍 测试连接</button>
+            </div>
+            <div class="api-hint">API Key 仅保存在浏览器本地（localStorage），不会上传到任何服务器。免费版限制 10 请求/分钟。</div>
+        </div>
+
+        <!-- Error -->
+        <div id="errorBox"></div>
+
+        <!-- Toolbar -->
+        <div class="toolbar">
+            <select id="leagueSelect" onchange="onLeagueChange()">
+                <option value="">🏆 选择联赛</option>
+            </select>
+            <button class="btn btn-secondary" onclick="loadDateRangeMatches('today')" id="todayBtn">📅 今日</button>
+            <button class="btn btn-secondary" onclick="loadDateRangeMatches('3days')" id="days3Btn">📅 未来3天</button>
+            <button class="btn btn-secondary" onclick="loadDateRangeMatches('7days')" id="days7Btn">📅 未来7天</button>
+            <button class="btn btn-secondary" onclick="refreshData()" id="refreshBtn">🔄 刷新</button>
+        </div>
+
+        <!-- Status -->
+        <div class="status-bar">
+            <span id="statusLeft">请选择一个联赛</span>
+            <span id="statusRight"></span>
+        </div>
+
+        <!-- Match Selector -->
+        <div class="tab-content" id="matchSelector" style="margin-bottom: 16px; display: none;">
+            <div class="match-grid" id="matchGrid"></div>
+        </div>
+
+        <!-- Score Board -->
+        <div class="score-board" id="scoreBoard" style="display: none;">
+            <div class="match-status" id="matchStatus">
+                <span class="live-dot" style="display:none"></span>
+                <span id="statusText">未开始</span>
+            </div>
+            <div class="match-teams">
+                <div class="team-side">
+                    <div class="team-logo" id="homeLogo">🏠</div>
+                    <div class="team-name" id="homeName">主队</div>
+                </div>
+                <div class="score-center" id="scoreDisplay">- : -</div>
+                <div class="team-side">
+                    <div class="team-logo" id="awayLogo">✈️</div>
+                    <div class="team-name" id="awayName">客队</div>
+                </div>
+            </div>
+            <div class="match-time" id="matchTime"></div>
+            <div class="match-venue" id="matchVenue"></div>
+        </div>
+
+        <!-- Win Rate Panel -->
+        <div class="winrate-panel" id="winRatePanel" style="display: none;">
+            <h2>📊 胜率分析</h2>
+            <div class="winrate-main">
+                <div class="winrate-team">
+                    <div class="rate-value" id="homeRate">50%</div>
+                    <div class="rate-label" id="homeRateLabel">主队</div>
+                </div>
+                <div class="winrate-vs">VS</div>
+                <div class="winrate-team">
+                    <div class="rate-value" id="awayRate">50%</div>
+                    <div class="rate-label" id="awayRateLabel">客队</div>
+                </div>
+            </div>
+            <div class="winrate-bar-bg">
+                <div class="winrate-bar-home" id="homeBar" style="width:50%">50%</div>
+                <div class="winrate-bar-away" id="awayBar" style="width:50%">50%</div>
+            </div>
+            <div class="winrate-draw">平局概率：<span id="drawRate">20%</span></div>
+            <div class="dimension-list" id="dimensionList"></div>
+        </div>
+
+        <!-- Screenshot / Video Analysis Panel -->
+        <div class="screenshot-panel" id="screenshotPanel" style="display: none;">
+            <h2>📷 画面态势分析（截图 + AI）
+                <span id="autoModeBadge" style="display:none;font-size:0.7rem;background:#ff9800;color:#fff;padding:2px 8px;border-radius:10px;margin-left:8px;">🤖 自动模式</span>
+            </h2>
+            <!-- 自动模式配置 -->
+            <div style="background:#fff8e1;border-radius:8px;padding:12px 14px;margin-bottom:14px;border:1px solid #ffe082;">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                    <span style="font-size:0.85rem;font-weight:600;">🤖 全自动模式（AI 自动截图分析）</span>
+                    <span style="font-size:0.75rem;color:var(--text-secondary);">设置后无需操作，AI 自动运行</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <input type="url" id="liveUrlInput" placeholder="粘贴直播网址（如 https://live.bilibili.com/xxx）"
+                           style="flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.85rem;outline:none;">
+                    <button class="btn btn-primary" onclick="saveLiveUrl()" style="font-size:0.8rem;padding:8px 14px;">保存直播源</button>
+                    <button class="btn btn-secondary" onclick="testLiveUrl()" style="font-size:0.8rem;padding:8px 14px;">🔍 测试</button>
+                </div>
+                <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:6px;" id="liveUrlStatus">当前未设置直播源</div>
+            </div>
+            <div class="screenshot-zone" id="screenshotZone">
+                <div class="screenshot-zone-icon">📸</div>
+                <div class="screenshot-zone-text">
+                    截图后按 <strong>Ctrl+V</strong> 粘贴<br>
+                    <span style="font-size:0.75rem;">或点击此处选择图片文件</span>
+                </div>
+            </div>
+            <div class="ai-input-area">
+                <label style="font-size:0.85rem;color:var(--text-secondary);display:block;margin-bottom:6px;">
+                    🤖 粘贴 AI 分析结果
+                </label>
+                <textarea id="aiAnalysisInput" placeholder="将 AI（我）给你的分析结果粘贴到这里，然后点击"解析并填充"..." rows="3"></textarea>
+                <div class="hint">粘贴后点击"解析 AI 结果"，自动填充下方滑块</div>
+            </div>
+            <div class="separator-text">或 手动调整态势滑块</div>
+            <div class="analysis-sliders" id="analysisSliders">
+                <div class="slider-item">
+                    <span class="slider-label">⚔️ 进攻威胁</span>
+                    <input type="range" min="0" max="100" value="50" data-key="attack" oninput="onSliderChange()">
+                    <span class="slider-value" id="val-attack">50</span>
+                </div>
+                <div class="slider-item">
+                    <span class="slider-label">🎯 控球压制</span>
+                    <input type="range" min="0" max="100" value="50" data-key="control" oninput="onSliderChange()">
+                    <span class="slider-value" id="val-control">50</span>
+                </div>
+                <div class="slider-item">
+                    <span class="slider-label">💥 关键机会</span>
+                    <input type="range" min="0" max="100" value="50" data-key="chance" oninput="onSliderChange()">
+                    <span class="slider-value" id="val-chance">50</span>
+                </div>
+                <div class="slider-item">
+                    <span class="slider-label">🛡️ 防守稳固</span>
+                    <input type="range" min="0" max="100" value="50" data-key="defense" oninput="onSliderChange()">
+                    <span class="slider-value" id="val-defense">50</span>
+                </div>
+                <div class="slider-item">
+                    <span class="slider-label">🔥 整体势头</span>
+                    <input type="range" min="0" max="100" value="50" data-key="momentum" oninput="onSliderChange()">
+                    <span class="slider-value" id="val-momentum">50</span>
+                </div>
+            </div>
+            <div class="analysis-result">
+                <div>
+                    <div class="ar-label">画面态势综合评分（主队）</div>
+                    <div class="ar-direction" id="trendDirection">50 分 → 均衡态势</div>
+                </div>
+                <div class="ar-score" id="trendScore">50</div>
+            </div>
+            <div class="analysis-actions">
+                <button class="btn btn-secondary" onclick="parseAIAnalysis()">📝 解析 AI 结果</button>
+                <button class="btn btn-primary" onclick="applyVisualAnalysis()">✅ 应用分析</button>
+                <button class="btn btn-secondary" onclick="resetVisualAnalysis()">🔄 重置</button>
+            </div>
+            <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:10px;">
+                💡 综合评分 &gt; 50 主队优势，&lt; 50 客队优势
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div id="tabsArea" style="display: none;">
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('form')">近期战绩</button>
+                <button class="tab-btn" onclick="switchTab('standings')">积分榜</button>
+                <button class="tab-btn" onclick="switchTab('h2h')">历史交锋</button>
+            </div>
+            <div class="tab-content">
+                <div class="tab-pane active" id="tab-form">
+                    <div class="loading"><div class="spinner"></div>加载中...</div>
+                </div>
+                <div class="tab-pane" id="tab-standings">
+                    <div class="loading"><div class="spinner"></div>加载中...</div>
+                </div>
+                <div class="tab-pane" id="tab-h2h">
+                    <div class="loading"><div class="spinner"></div>加载中...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Empty State -->
+        <div class="empty-state" id="emptyState">
+            <div class="empty-state-icon">⚽</div>
+            <div>请先在上方输入 API Key 并选择联赛</div>
+            <div style="font-size: 0.8rem; margin-top: 8px;">支持英超、西甲、意甲、德甲、法甲等欧洲主流联赛</div>
+        </div>
+    </div>
+
+    <script>
+        // ===================== 全局状态 =====================
+        const API_BASE = window.location.origin + '/api/proxy?path=';
+        const USE_PROXY = true; // 使用本地代理解决跨域
+        let API_KEY = localStorage.getItem('football_api_key') || '';
+        let competitions = [];
+        let currentMatches = [];
+        let selectedMatch = null;
+        let standingsData = null;
+        let homeForm = [];
+        let awayForm = [];
+        let h2hMatches = [];
+        let autoRefreshTimer = null;
+
+        // 画面态势分析状态
+        let appliedVisualScore = 0.5; // 默认50分（均衡），转为0-1区间
+        let visualApplied = false;    // 是否已应用画面分析
+
+        // 常用联赛（按 popularity 排序）
+        const POPULAR_LEAGUES = {
+            'PL': '英超',
+            'PD': '西甲',
+            'SA': '意甲',
+            'BL1': '德甲',
+            'FL1': '法甲',
+            'CL': '欧冠',
+            'EC': '欧洲杯',
+            'WC': '世界杯'
+        };
+
+        // ===================== 初始化 =====================
+        document.addEventListener('DOMContentLoaded', () => {
+            if (API_KEY) {
+                document.getElementById('apiKeyInput').value = API_KEY;
+                document.getElementById('apiPanel').style.display = 'none';
+                loadCompetitions();
+            }
+        });
+
+        function saveApiKey() {
+            const key = document.getElementById('apiKeyInput').value.trim();
+            if (!key) return;
+            API_KEY = key;
+            localStorage.setItem('football_api_key', key);
+            document.getElementById('apiPanel').style.display = 'none';
+            loadCompetitions();
+        }
+
+        async function testApiConnection() {
+            const key = document.getElementById('apiKeyInput').value.trim() || API_KEY;
+            if (!key) {
+                showError('请先输入 API Key');
+                return;
+            }
+            const btn = document.getElementById('testBtn');
+            btn.textContent = '⏳ 测试中...';
+            btn.disabled = true;
+            try {
+                const verifyUrl = USE_PROXY
+                    ? `/api/verify?key=${encodeURIComponent(key)}`
+                    : `https://api.football-data.org/v4/competitions`;
+                const headers = USE_PROXY ? {} : { 'X-Auth-Token': key };
+                const res = await fetch(verifyUrl, { headers });
+                if (res.ok) {
+                    showError('✅ API 连接成功！Key 有效，可以正常使用');
+                    if (!API_KEY) {
+                        API_KEY = key;
+                        localStorage.setItem('football_api_key', key);
+                        document.getElementById('apiPanel').style.display = 'none';
+                        loadCompetitions();
+                    }
+                } else if (res.status === 429) {
+                    showError('⚠️ 请求过于频繁（免费版限制 10次/分钟），1分钟后重试');
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    showError(`❌ 服务器返回 ${res.status}: ${err.message || '未知错误'}`);
+                }
+            } catch (e) {
+                showError(`❌ 连接失败: ${e.message}。请确认运行了: node server.js`);
+            } finally {
+                btn.textContent = '🔍 测试连接';
+                btn.disabled = false;
+            }
+        }
+
+        // ===================== API 请求 =====================
+        async function apiFetch(endpoint) {
+            if (!API_KEY) {
+                showError('请先输入 API Key（上方输入框 → 点击"保存"）');
+                return null;
+            }
+            try {
+                // 通过本地代理请求（解决 CORS 跨域问题）
+                const url = USE_PROXY
+                    ? `${API_BASE}${encodeURIComponent(endpoint)}&key=${encodeURIComponent(API_KEY)}`
+                    : `https://api.football-data.org/v4${endpoint}`;
+
+                const headers = USE_PROXY ? {} : { 'X-Auth-Token': API_KEY };
+                const res = await fetch(url, { headers });
+                if (res.status === 429) {
+                    showError('请求过于频繁，请稍后再试（免费版限制 10 请求/分钟）');
+                    return null;
+                }
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    const errMap = {
+                        401: '❌ API Key 无效！请检查 football-data.org 注册的 Key 是否正确',
+                        403: '❌ API Key 权限不足，免费版可能不支持该联赛'
+                    };
+                    showError(errMap[res.status] || `API 错误(${res.status}): ${err.message || res.statusText}`);
+                    return null;
+                }
+                return await res.json();
+            } catch (e) {
+                showError(`❌ 请求失败: ${e.message}<br>
+                    <span style="font-size:0.75rem;">请确认本地代理服务是否运行（在终端运行: node server.js）</span>`);
+                return null;
+            }
+        }
+
+        function showError(msg) {
+            const box = document.getElementById('errorBox');
+            box.innerHTML = `<div class="error-msg">${msg}</div>`;
+            setTimeout(() => box.innerHTML = '', 5000);
+        }
+
+        // ===================== 加载联赛 =====================
+        async function loadCompetitions() {
+            setStatus('正在加载联赛列表...');
+            const data = await apiFetch('/competitions');
+            if (!data) return;
+
+            competitions = (data.competitions || []).filter(c =>
+                c.plan === 'TIER_ONE' || Object.keys(POPULAR_LEAGUES).includes(c.code)
+            );
+
+            // 按热门程度排序
+            competitions.sort((a, b) => {
+                const pa = Object.keys(POPULAR_LEAGUES).indexOf(a.code);
+                const pb = Object.keys(POPULAR_LEAGUES).indexOf(b.code);
+                if (pa >= 0 && pb >= 0) return pa - pb;
+                if (pa >= 0) return -1;
+                if (pb >= 0) return 1;
+                return a.name.localeCompare(b.name);
+            });
+
+            const sel = document.getElementById('leagueSelect');
+            sel.innerHTML = '<option value="">🏆 选择联赛</option>';
+            competitions.forEach(c => {
+                const name = POPULAR_LEAGUES[c.code] || c.name;
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = `${name} (${c.area?.name || ''})`;
+                sel.appendChild(opt);
+            });
+
+            setStatus('已加载 ' + competitions.length + ' 个联赛');
+            document.getElementById('emptyState').innerHTML = `
+                <div class="empty-state-icon">🏆</div>
+                <div>请在上方选择要查看的联赛</div>
+            `;
+        }
+
+        // ===================== 日期范围选择 =====================
+        let currentDateRange = 'today'; // 'today', '3days', '7days'
+
+        function getDateRange(range) {
+            const now = new Date();
+            // 使用本地日期（YYYY-MM-DD）
+            const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+            const today = fmt(now);
+            const in3 = fmt(new Date(now.getTime() + 3 * 86400000));
+            const in7 = fmt(new Date(now.getTime() + 7 * 86400000));
+
+            if (range === 'today') return { from: today, to: today };
+            if (range === '3days') return { from: today, to: in3 };
+            if (range === '7days') return { from: today, to: in7 };
+            return { from: today, to: in7 };
+        }
+
+        function highlightDateBtn(range) {
+            ['todayBtn', 'days3Btn', 'days7Btn'].forEach(id => {
+                document.getElementById(id).style.background = '';
+                document.getElementById(id).style.color = '';
+            });
+            const activeMap = { today: 'todayBtn', '3days': 'days3Btn', '7days': 'days7Btn' };
+            const btn = document.getElementById(activeMap[range]);
+            if (btn) {
+                btn.style.background = 'var(--primary)';
+                btn.style.color = 'white';
+            }
+        }
+
+        async function loadDateRangeMatches(range) {
+            currentDateRange = range;
+            highlightDateBtn(range);
+            const { from, to } = getDateRange(range);
+            const rangeLabel = { today: '今日', '3days': '未来3天', '7days': '未来7天' };
+
+            setStatus(`正在加载 ${rangeLabel[range]} 比赛...`);
+
+            const leagueId = document.getElementById('leagueSelect').value;
+            let data;
+
+            if (range === 'today') {
+                // "今日"使用无参数接口（已验证可用）
+                if (leagueId) {
+                    data = await apiFetch(`/competitions/${leagueId}/matches`);
+                } else {
+                    data = await apiFetch('/matches');
+                }
+            } else {
+                // 未来日期：走联赛接口 + 日期参数
+                if (leagueId) {
+                    data = await apiFetch(`/competitions/${leagueId}/matches?dateFrom=${from}&dateTo=${to}`);
+                } else {
+                    // 无选中联赛时，逐个热门联赛查询并聚合
+                    let combined = [];
+                    const popularIds = competitions.slice(0, 8).map(c => c.id);
+                    for (const cid of popularIds) {
+                        const d = await apiFetch(`/competitions/${cid}/matches?dateFrom=${from}&dateTo=${to}&limit=15`);
+                        if (d && d.matches && d.matches.length > 0) {
+                            combined = combined.concat(d.matches);
+                        }
+                    }
+                    if (combined.length > 0) {
+                        data = { matches: combined };
+                    }
+                }
+            }
+
+            if (!data || !data.matches) {
+                setStatus(`${rangeLabel[range]}暂无比赛数据`);
+                document.getElementById('matchSelector').style.display = '';
+                showManualAddPrompt();
+                return;
+            }
+
+            currentMatches = (data.matches || []).filter(m =>
+                m.status === 'SCHEDULED' || m.status === 'LIVE' || m.status === 'IN_PLAY' || m.status === 'PAUSED' || m.status === 'FINISHED'
+            );
+
+            renderMatchSelector();
+            document.getElementById('matchSelector').style.display = '';
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('leagueSelect').value = leagueId || '';
+            setStatus(`${rangeLabel[range]}共 ${currentMatches.length} 场比赛`);
+
+            // 未来日期没找到比赛时，提示手动添加
+            if (range !== 'today' && currentMatches.length === 0) {
+                showManualAddPrompt();
+            }
+        }
+
+        function showManualAddPrompt() {
+            const grid = document.getElementById('matchGrid');
+            grid.innerHTML = `
+                <div style="text-align:center;padding:24px;color:var(--text-secondary);">
+                    <div style="font-size:2rem;margin-bottom:8px;">📋</div>
+                    <div style="font-size:0.9rem;margin-bottom:12px;font-weight:600;">免费 API 不提供未来比赛数据</div>
+                    <div style="font-size:0.8rem;margin-bottom:16px;">手动添加你要分析的比赛，同样支持截图分析和全自动模式</div>
+                    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;max-width:500px;margin:0 auto;">
+                        <input id="manualHomeInput" placeholder="主队名" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;width:130px;font-size:0.85rem;">
+                        <span style="line-height:36px;color:var(--text-secondary);">VS</span>
+                        <input id="manualAwayInput" placeholder="客队名" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;width:130px;font-size:0.85rem;">
+                        <input id="manualDateInput" type="date" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.85rem;">
+                        <button class="btn btn-primary" onclick="addManualMatch()" style="font-size:0.85rem;">➕ 添加比赛</button>
+                    </div>
+                    <div style="font-size:0.75rem;margin-top:10px;">💡 建议：先选一个联赛（如上方的英超），今日比赛数据会更完整</div>
+                </div>
+            `;
+        }
+
+        async function onLeagueChange() {
+            const id = document.getElementById('leagueSelect').value;
+            if (!id) return;
+            const { from, to } = getDateRange(currentDateRange);
+            await loadMatchesForCompetition(id, from, to);
+        }
+
+        async function loadMatchesForCompetition(compId, dateFrom, dateTo) {
+            setStatus('正在加载比赛...');
+            let endpoint = `/competitions/${compId}/matches`;
+            if (dateFrom) endpoint += `?dateFrom=${dateFrom}`;
+            if (dateTo) endpoint += `${dateFrom ? '&' : '?'}dateTo=${dateTo}`;
+            const data = await apiFetch(endpoint);
+            if (!data) return;
+
+            currentMatches = (data.matches || []).filter(m =>
+                m.status === 'SCHEDULED' || m.status === 'LIVE' || m.status === 'IN_PLAY' || m.status === 'PAUSED' || m.status === 'FINISHED'
+            );
+
+            const statusOrder = { 'LIVE': 0, 'IN_PLAY': 0, 'PAUSED': 1, 'SCHEDULED': 2, 'FINISHED': 3 };
+            currentMatches.sort((a, b) => {
+                const da = new Date(a.utcDate);
+                const db = new Date(b.utcDate);
+                const sa = statusOrder[a.status] ?? 4;
+                const sb = statusOrder[b.status] ?? 4;
+                if (sa !== sb) return sa - sb;
+                return da - db;
+            });
+
+            renderMatchSelector();
+            document.getElementById('matchSelector').style.display = '';
+            document.getElementById('emptyState').style.display = 'none';
+            setStatus(`找到 ${currentMatches.length} 场比赛`);
+        }
+
+        // ===================== 渲染比赛选择器 =====================
+        function renderMatchSelector() {
+            const grid = document.getElementById('matchGrid');
+            if (currentMatches.length === 0) {
+                grid.innerHTML = '<div class="empty-state">暂无比赛数据</div>';
+                return;
+            }
+            grid.innerHTML = currentMatches.map(m => {
+                const isLive = m.status === 'LIVE' || m.status === 'IN_PLAY';
+                const isSelected = selectedMatch && selectedMatch.id === m.id;
+                const homeScore = m.score?.fullTime?.home ?? '-';
+                const awayScore = m.score?.fullTime?.away ?? '-';
+                const scoreDisplay = m.status === 'SCHEDULED' ? 'VS' : `${homeScore} - ${awayScore}`;
+                const statusText = getStatusText(m.status, m.utcDate);
+                return `
+                    <div class="match-card ${isSelected ? 'selected' : ''}" onclick="selectMatch(${m.id})">
+                        <div class="mc-teams">${m.homeTeam.shortName || m.homeTeam.name} vs ${m.awayTeam.shortName || m.awayTeam.name}</div>
+                        <div class="mc-score">${scoreDisplay}</div>
+                        <div class="mc-status ${isLive ? 'live' : ''}">${statusText}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function getStatusText(status, utcDate) {
+            if (status === 'LIVE' || status === 'IN_PLAY') return '进行中';
+            if (status === 'PAUSED') return '暂停';
+            if (status === 'FINISHED') return '已结束';
+            const d = new Date(utcDate);
+            return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+        }
+
+        // ===================== 手动添加比赛 =====================
+        function addManualMatch() {
+            const home = document.getElementById('manualHomeInput').value.trim();
+            const away = document.getElementById('manualAwayInput').value.trim();
+            const date = document.getElementById('manualDateInput').value;
+            if (!home || !away) {
+                showError('请填写主队和客队名称');
+                return;
+            }
+            // 创建自定义比赛对象（用负数 ID 避免与 API 数据冲突）
+            const manualMatch = {
+                id: -Date.now(), // 唯一负ID
+                utcDate: date ? new Date(date).toISOString() : new Date().toISOString(),
+                status: 'SCHEDULED',
+                homeTeam: { id: -1, name: home, shortName: home },
+                awayTeam: { id: -2, name: away, shortName: away },
+                score: { fullTime: { home: null, away: null } },
+                competition: { id: -1, name: '手动添加' }
+            };
+            currentMatches.unshift(manualMatch); // 插入到最前面
+            renderMatchSelector();
+            // 清除输入框
+            document.getElementById('manualHomeInput').value = '';
+            document.getElementById('manualAwayInput').value = '';
+            document.getElementById('manualDateInput').value = '';
+            setStatus(`已添加: ${home} vs ${away}`);
+            showError(`✅ 已添加比赛: ${home} vs ${away}，点击即可开始分析`);
+        }
+
+        // ===================== 选择比赛 =====================
+        async function selectMatch(matchId) {
+            selectedMatch = currentMatches.find(m => m.id === matchId);
+            if (!selectedMatch) return;
+
+            renderMatchSelector(); // 更新选中样式
+            renderScoreBoard();
+
+            document.getElementById('scoreBoard').style.display = '';
+            document.getElementById('winRatePanel').style.display = '';
+            document.getElementById('screenshotPanel').style.display = '';
+            document.getElementById('tabsArea').style.display = '';
+
+            // 初始化截图粘贴区
+            initScreenshotZone();
+
+            // 手动添加的比赛没有历史数据，跳过 API 加载
+            const isManual = selectedMatch.id < 0;
+            if (!isManual) {
+                await Promise.all([
+                    loadStandings(),
+                    loadTeamForm(selectedMatch.homeTeam.id, 'home'),
+                    loadTeamForm(selectedMatch.awayTeam.id, 'away'),
+                    loadHeadToHead()
+                ]);
+            } else {
+                document.getElementById('tab-form').innerHTML =
+                    '<div class="empty-state">手动添加的比赛无历史数据，请使用截图分析功能</div>';
+                document.getElementById('tab-standings').innerHTML =
+                    '<div class="empty-state">手动添加的比赛无积分榜数据</div>';
+                document.getElementById('tab-h2h').innerHTML =
+                    '<div class="empty-state">手动添加的比赛无历史交锋数据</div>';
+            }
+
+            calculateAndShowWinRate();
+            startAutoRefresh();
+        }
+
+        function renderScoreBoard() {
+            const m = selectedMatch;
+            document.getElementById('homeName').textContent = m.homeTeam.name;
+            document.getElementById('awayName').textContent = m.awayTeam.name;
+
+            const hs = m.score?.fullTime?.home ?? '-';
+            const as = m.score?.fullTime?.away ?? '-';
+            document.getElementById('scoreDisplay').textContent = m.status === 'SCHEDULED' ? 'VS' : `${hs} : ${as}`;
+
+            const isLive = m.status === 'LIVE' || m.status === 'IN_PLAY';
+            document.querySelector('.live-dot').style.display = isLive ? '' : 'none';
+            document.getElementById('statusText').textContent = getStatusText(m.status, m.utcDate);
+
+            const d = new Date(m.utcDate);
+            document.getElementById('matchTime').textContent = `开球时间: ${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+            document.getElementById('matchVenue').textContent = m.venue || '';
+        }
+
+        // ===================== 加载详细数据 =====================
+        async function loadStandings() {
+            if (!selectedMatch) return;
+            const compId = selectedMatch.competition.id;
+            const data = await apiFetch(`/competitions/${compId}/standings`);
+            standingsData = data;
+            renderStandings();
+        }
+
+        async function loadTeamForm(teamId, side) {
+            const data = await apiFetch(`/teams/${teamId}/matches?limit=5&status=FINISHED`);
+            const matches = data?.matches || [];
+            if (side === 'home') homeForm = matches;
+            else awayForm = matches;
+            renderForm();
+        }
+
+        async function loadHeadToHead() {
+            if (!selectedMatch) return;
+            const homeId = selectedMatch.homeTeam.id;
+            const awayId = selectedMatch.awayTeam.id;
+            // 通过获取两队近期比赛并筛选交手记录
+            const [homeData, awayData] = await Promise.all([
+                apiFetch(`/teams/${homeId}/matches?limit=20&status=FINISHED`),
+                apiFetch(`/teams/${awayId}/matches?limit=20&status=FINISHED`)
+            ]);
+            const homeMatches = homeData?.matches || [];
+            const awayMatches = awayData?.matches || [];
+            const awayIds = new Set(awayMatches.map(m => m.id));
+            h2hMatches = homeMatches.filter(m => awayIds.has(m.id)).slice(0, 5);
+            renderH2H();
+        }
+
+        // ===================== 渲染标签页 =====================
+        function renderForm() {
+            const container = document.getElementById('tab-form');
+            const homeRows = formatFormRows(homeForm, selectedMatch.homeTeam.id);
+            const awayRows = formatFormRows(awayForm, selectedMatch.awayTeam.id);
+            container.innerHTML = `
+                <h3 style="margin-bottom:12px;font-size:0.95rem;color:var(--primary)">🏠 ${selectedMatch.homeTeam.name} 近5场</h3>
+                <table class="data-table" style="margin-bottom:20px">
+                    <tr><th>日期</th><th>对手</th><th>比分</th><th>结果</th></tr>
+                    ${homeRows}
+                </table>
+                <h3 style="margin-bottom:12px;font-size:0.95rem;color:#1565c0">✈️ ${selectedMatch.awayTeam.name} 近5场</h3>
+                <table class="data-table">
+                    <tr><th>日期</th><th>对手</th><th>比分</th><th>结果</th></tr>
+                    ${awayRows}
+                </table>
+            `;
+        }
+
+        function formatFormRows(matches, teamId) {
+            if (!matches.length) return '<tr><td colspan="4" style="text-align:center;color:#999">暂无数据</td></tr>';
+            return matches.map(m => {
+                const isHome = m.homeTeam.id === teamId;
+                const opponent = isHome ? m.awayTeam.name : m.homeTeam.name;
+                const teamScore = isHome ? m.score.fullTime.home : m.score.fullTime.away;
+                const oppScore = isHome ? m.score.fullTime.away : m.score.fullTime.home;
+                let result;
+                if (teamScore > oppScore) result = '<span class="badge badge-w">胜</span>';
+                else if (teamScore < oppScore) result = '<span class="badge badge-l">负</span>';
+                else result = '<span class="badge badge-d">平</span>';
+                const d = new Date(m.utcDate);
+                return `<tr>
+                    <td>${d.getMonth()+1}/${d.getDate()}</td>
+                    <td>${opponent}</td>
+                    <td>${teamScore} - ${oppScore}</td>
+                    <td>${result}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function renderStandings() {
+            const container = document.getElementById('tab-standings');
+            if (!standingsData || !standingsData.standings) {
+                container.innerHTML = '<div class="empty-state">暂无积分榜数据</div>';
+                return;
+            }
+            const table = standingsData.standings[0]?.table || [];
+            const rows = table.map((t, i) => {
+                const posClass = i === 0 ? 'pos-1' : i === 1 ? 'pos-2' : i === 2 ? 'pos-3' : 'pos-other';
+                const isHome = t.team.id === selectedMatch?.homeTeam.id;
+                const isAway = t.team.id === selectedMatch?.awayTeam.id;
+                const highlight = isHome ? 'style="background:#e8f5e9"' : isAway ? 'style="background:#e3f2fd"' : '';
+                return `<tr ${highlight}>
+                    <td><span class="standing-pos ${posClass}">${t.position}</span></td>
+                    <td class="team-cell">
+                        ${isHome ? '🏠' : isAway ? '✈️' : ''} ${t.team.shortName || t.team.name}
+                    </td>
+                    <td>${t.playedGames}</td>
+                    <td>${t.won}</td>
+                    <td>${t.draw}</td>
+                    <td>${t.lost}</td>
+                    <td><b>${t.points}</b></td>
+                </tr>`;
+            }).join('');
+            container.innerHTML = `
+                <table class="data-table">
+                    <tr><th>排名</th><th>球队</th><th>赛</th><th>胜</th><th>平</th><th>负</th><th>积分</th></tr>
+                    ${rows}
+                </table>
+            `;
+        }
+
+        function renderH2H() {
+            const container = document.getElementById('tab-h2h');
+            if (!h2hMatches.length) {
+                container.innerHTML = '<div class="empty-state">暂无历史交锋数据</div>';
+                return;
+            }
+            const items = h2hMatches.map(m => {
+                const d = new Date(m.utcDate);
+                const hs = m.score?.fullTime?.home ?? 0;
+                const as = m.score?.fullTime?.away ?? 0;
+                let resultClass = '';
+                let resultText = '';
+                if (m.homeTeam.id === selectedMatch.homeTeam.id) {
+                    if (hs > as) { resultClass = 'color:var(--primary)'; resultText = '主胜'; }
+                    else if (hs < as) { resultClass = 'color:#c62828'; resultText = '主负'; }
+                    else { resultClass = 'color:var(--accent)'; resultText = '平局'; }
+                } else {
+                    if (as > hs) { resultClass = 'color:var(--primary)'; resultText = '主胜'; }
+                    else if (as < hs) { resultClass = 'color:#c62828'; resultText = '主负'; }
+                    else { resultClass = 'color:var(--accent)'; resultText = '平局'; }
+                }
+                return `
+                    <div class="h2h-item">
+                        <div class="h2h-date">${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}</div>
+                        <div class="h2h-teams">${m.homeTeam.name} ${hs} - ${as} ${m.awayTeam.name}</div>
+                        <div class="h2h-result" style="${resultClass}">${resultText}</div>
+                    </div>
+                `;
+            }).join('');
+            container.innerHTML = items;
+        }
+
+        // ===================== 胜率计算 =====================
+        function calculateAndShowWinRate() {
+            if (!selectedMatch) return;
+
+            const homeId = selectedMatch.homeTeam.id;
+            const awayId = selectedMatch.awayTeam.id;
+
+            // 1. 近期战绩分 (25%)
+            const homeFormScore = calcFormScore(homeForm, homeId);
+            const awayFormScore = calcFormScore(awayForm, awayId);
+
+            // 2. 联赛排名分 (20%)
+            const homeStanding = getStanding(homeId);
+            const awayStanding = getStanding(awayId);
+            const totalTeams = standingsData?.standings?.[0]?.table?.length || 20;
+            const homeRankScore = homeStanding ? (totalTeams - homeStanding.position + 1) / totalTeams : 0.5;
+            const awayRankScore = awayStanding ? (totalTeams - awayStanding.position + 1) / totalTeams : 0.5;
+
+            // 3. 历史交锋 (15%)
+            const homeH2H = calcH2HScore(homeId);
+            const awayH2H = calcH2HScore(awayId);
+
+            // 4. 主客场优势 (15%) - 主队加分
+            const homeAdv = 0.65;
+            const awayAdv = 0.35;
+
+            // 5. 攻防数据 (15%) - 用积分率近似
+            const homeAttack = homeStanding ? homeStanding.points / (homeStanding.playedGames * 3 || 1) : 0.5;
+            const awayAttack = awayStanding ? awayStanding.points / (awayStanding.playedGames * 3 || 1) : 0.5;
+
+            // 6. 实时状态 (10%)
+            let homeLive = 0.5, awayLive = 0.5;
+            if (selectedMatch.status === 'LIVE' || selectedMatch.status === 'IN_PLAY') {
+                const hs = selectedMatch.score?.fullTime?.home ?? 0;
+                const as = selectedMatch.score?.fullTime?.away ?? 0;
+                if (hs > as) { homeLive = 0.8; awayLive = 0.2; }
+                else if (hs < as) { homeLive = 0.2; awayLive = 0.8; }
+                else { homeLive = 0.5; awayLive = 0.5; }
+            }
+
+            // 7. 画面态势 (10%) - 来自截图分析
+            const homeVisual = visualApplied ? appliedVisualScore : 0.5;
+            const awayVisual = visualApplied ? (1 - appliedVisualScore) : 0.5;
+
+            // 加权计算（新权重：加入画面态势10%，其他维度等比缩减）
+            const homeTotal =
+                homeFormScore * 0.22 +
+                homeRankScore * 0.18 +
+                homeH2H * 0.14 +
+                homeAdv * 0.14 +
+                homeAttack * 0.14 +
+                homeLive * 0.08 +
+                homeVisual * 0.10;
+
+            const awayTotal =
+                awayFormScore * 0.22 +
+                awayRankScore * 0.18 +
+                awayH2H * 0.14 +
+                awayAdv * 0.14 +
+                awayAttack * 0.14 +
+                awayLive * 0.08 +
+                awayVisual * 0.10;
+
+            const total = homeTotal + awayTotal;
+            const homeRate = Math.round((homeTotal / total) * 100);
+            const awayRate = Math.round((awayTotal / total) * 100);
+            const drawRate = Math.max(5, Math.round(30 - Math.abs(homeRate - awayRate) * 0.3));
+
+            // 归一化（扣除平局）
+            const remain = 100 - drawRate;
+            const homeFinal = Math.round((homeRate / (homeRate + awayRate)) * remain);
+            const awayFinal = remain - homeFinal;
+
+            // 显示
+            document.getElementById('homeRate').textContent = homeFinal + '%';
+            document.getElementById('awayRate').textContent = awayFinal + '%';
+            document.getElementById('homeRateLabel').textContent = selectedMatch.homeTeam.name;
+            document.getElementById('awayRateLabel').textContent = selectedMatch.awayTeam.name;
+            document.getElementById('homeBar').style.width = homeFinal + '%';
+            document.getElementById('homeBar').textContent = homeFinal >= 15 ? homeFinal + '%' : '';
+            document.getElementById('awayBar').style.width = awayFinal + '%';
+            document.getElementById('awayBar').textContent = awayFinal >= 15 ? awayFinal + '%' : '';
+            document.getElementById('drawRate').textContent = drawRate + '%';
+
+            // 各维度对比
+            const dims = [
+                { name: '近期战绩', home: homeFormScore, away: awayFormScore },
+                { name: '联赛排名', home: homeRankScore, away: awayRankScore },
+                { name: '历史交锋', home: homeH2H, away: awayH2H },
+                { name: '主客场', home: homeAdv, away: awayAdv },
+                { name: '攻防数据', home: homeAttack, away: awayAttack },
+            ];
+            if (selectedMatch.status === 'LIVE' || selectedMatch.status === 'IN_PLAY') {
+                dims.push({ name: '实时状态', home: homeLive, away: awayLive });
+            }
+            if (visualApplied) {
+                dims.push({ name: '画面态势', home: homeVisual, away: awayVisual });
+            }
+
+            document.getElementById('dimensionList').innerHTML = dims.map(d => {
+                const total = d.home + d.away;
+                const hPct = Math.round((d.home / total) * 100);
+                const aPct = 100 - hPct;
+                const hScore = Math.round(d.home * 100);
+                const aScore = Math.round(d.away * 100);
+                return `
+                    <div class="dimension-item">
+                        <div class="dimension-name">${d.name}</div>
+                        <div class="dimension-bars">
+                            <div class="dim-bar-home-wrap">
+                                <div class="dim-bar-home" style="width:${hPct}%"></div>
+                            </div>
+                            <div class="dim-score">${hScore}</div>
+                            <div class="dim-score">-</div>
+                            <div class="dim-score">${aScore}</div>
+                            <div class="dim-bar-away-wrap">
+                                <div class="dim-bar-away" style="width:${aPct}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function calcFormScore(matches, teamId) {
+            if (!matches.length) return 0.5;
+            let points = 0;
+            matches.forEach(m => {
+                const isHome = m.homeTeam.id === teamId;
+                const ts = isHome ? m.score.fullTime.home : m.score.fullTime.away;
+                const os = isHome ? m.score.fullTime.away : m.score.fullTime.home;
+                if (ts > os) points += 3;
+                else if (ts === os) points += 1;
+            });
+            return points / (matches.length * 3);
+        }
+
+        function getStanding(teamId) {
+            if (!standingsData || !standingsData.standings) return null;
+            return standingsData.standings[0]?.table?.find(t => t.team.id === teamId) || null;
+        }
+
+        function calcH2HScore(teamId) {
+            if (!h2hMatches.length) return 0.5;
+            let points = 0;
+            h2hMatches.forEach(m => {
+                const isHome = m.homeTeam.id === teamId;
+                const ts = isHome ? m.score.fullTime.home : m.score.fullTime.away;
+                const os = isHome ? m.score.fullTime.away : m.score.fullTime.home;
+                if (ts > os) points += 3;
+                else if (ts === os) points += 1;
+            });
+            return points / (h2hMatches.length * 3);
+        }
+
+        // ===================== 标签页切换 =====================
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById('tab-' + tab).classList.add('active');
+        }
+
+        // ===================== 自动刷新 =====================
+        function startAutoRefresh() {
+            if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+            if (!selectedMatch) return;
+            const isLive = selectedMatch.status === 'LIVE' || selectedMatch.status === 'IN_PLAY';
+            if (!isLive) return;
+
+            autoRefreshTimer = setInterval(async () => {
+                if (!selectedMatch) return;
+                // 重新获取当前比赛数据
+                const matchData = currentMatches.find(m => m.id === selectedMatch.id);
+                if (matchData) {
+                    selectedMatch = matchData;
+                    renderScoreBoard();
+                }
+                // 每60秒刷新一次详细数据
+            }, 60000);
+        }
+
+        async function refreshData() {
+            if (!selectedMatch) {
+                const leagueId = document.getElementById('leagueSelect').value;
+                if (leagueId) {
+                    const { from, to } = getDateRange(currentDateRange);
+                    await loadMatchesForCompetition(leagueId, from, to);
+                }
+                return;
+            }
+            setStatus('正在刷新...');
+            const compId = selectedMatch.competition.id;
+            const data = await apiFetch(`/competitions/${compId}/matches`);
+            if (data) {
+                const updated = (data.matches || []).find(m => m.id === selectedMatch.id);
+                if (updated) {
+                    selectedMatch = updated;
+                    // 更新 currentMatches 中的数据
+                    const idx = currentMatches.findIndex(m => m.id === updated.id);
+                    if (idx >= 0) currentMatches[idx] = updated;
+                    renderScoreBoard();
+                    renderMatchSelector();
+                    calculateAndShowWinRate();
+                }
+            }
+            setStatus('刷新完成');
+        }
+
+        // ===================== 工具函数 =====================
+        function setStatus(msg) {
+            document.getElementById('statusLeft').textContent = msg;
+            const now = new Date();
+            document.getElementById('statusRight').textContent = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+        }
+
+        // ===================== 画面态势分析 =====================
+        function initScreenshotZone() {
+            const zone = document.getElementById('screenshotZone');
+            if (!zone) return;
+
+            // 粘贴事件：Ctrl+V
+            zone.addEventListener('paste', (e) => {
+                e.preventDefault();
+                const items = e.clipboardData.items;
+                for (const item of items) {
+                    if (item.type.startsWith('image/')) {
+                        const file = item.getAsFile();
+                        const reader = new FileReader();
+                        reader.onload = (ev) => showPreviewImage(ev.target.result);
+                        reader.readAsDataURL(file);
+                        break;
+                    }
+                }
+            });
+
+            // 点击上传
+            zone.addEventListener('click', () => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => showPreviewImage(ev.target.result);
+                        reader.readAsDataURL(file);
+                    }
+                };
+                input.click();
+            });
+
+            // 拖拽上传
+            zone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                zone.classList.add('dragover');
+            });
+            zone.addEventListener('dragleave', () => {
+                zone.classList.remove('dragover');
+            });
+            zone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                zone.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                if (files.length > 0 && files[0].type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => showPreviewImage(ev.target.result);
+                    reader.readAsDataURL(files[0]);
+                }
+            });
+        }
+
+        function showPreviewImage(dataUrl) {
+            const zone = document.getElementById('screenshotZone');
+            zone.innerHTML = `
+                <button class="clear-img" onclick="event.stopPropagation(); clearScreenshot()">✕</button>
+                <img src="${dataUrl}" alt="截图预览">
+            `;
+        }
+
+        function clearScreenshot() {
+            const zone = document.getElementById('screenshotZone');
+            if (!zone) return;
+            zone.innerHTML = `
+                <div class="screenshot-zone-icon">📸</div>
+                <div class="screenshot-zone-text">
+                    截图后按 <strong>Ctrl+V</strong> 粘贴<br>
+                    <span style="font-size:0.75rem;">或点击此处选择图片文件</span>
+                </div>
+            `;
+        }
+
+        function onSliderChange() {
+            ['attack', 'control', 'chance', 'defense', 'momentum'].forEach(key => {
+                const slider = document.querySelector(`input[data-key="${key}"]`);
+                const display = document.getElementById(`val-${key}`);
+                if (slider && display) display.textContent = slider.value;
+            });
+            updateTrendScore();
+        }
+
+        function updateTrendScore() {
+            const getVal = (key) => parseFloat(document.querySelector(`input[data-key="${key}"]`).value);
+            const attack = getVal('attack');
+            const control = getVal('control');
+            const chance = getVal('chance');
+            const defense = getVal('defense');
+            const momentum = getVal('momentum');
+
+            // 加权综合评分：进攻和机会权重更高
+            const weights = { attack: 0.25, control: 0.20, chance: 0.25, defense: 0.15, momentum: 0.15 };
+            const score = attack * weights.attack + control * weights.control + chance * weights.chance
+                        + defense * weights.defense + momentum * weights.momentum;
+
+            document.getElementById('trendScore').textContent = Math.round(score);
+
+            let direction = '均衡态势';
+            if (score > 60) direction = '🔥 主队明显占优';
+            else if (score > 52) direction = '👍 主队略占优势';
+            else if (score < 40) direction = '🔥 客队明显占优';
+            else if (score < 48) direction = '👍 客队略占优势';
+            document.getElementById('trendDirection').textContent = `${Math.round(score)} 分 → ${direction}`;
+        }
+
+        function parseAIAnalysis() {
+            const text = document.getElementById('aiAnalysisInput').value.trim();
+            if (!text) {
+                showError('请先粘贴 AI 分析结果');
+                return;
+            }
+
+            const keyMap = {
+                '进攻威胁': 'attack',
+                '控球压制': 'control',
+                '关键机会': 'chance',
+                '防守稳固': 'defense',
+                '整体势头': 'momentum'
+            };
+
+            let parsedCount = 0;
+            // 解析格式："进攻威胁：主队 XX 分"
+            Object.entries(keyMap).forEach(([cn, key]) => {
+                const regex = new RegExp(`${cn}[：:]\\s*主队\\s*(\\d+)`);
+                const match = text.match(regex);
+                if (match) {
+                    const val = Math.max(0, Math.min(100, parseInt(match[1])));
+                    const slider = document.querySelector(`input[data-key="${key}"]`);
+                    if (slider) {
+                        slider.value = val;
+                        document.getElementById(`val-${key}`).textContent = val;
+                        parsedCount++;
+                    }
+                }
+            });
+
+            // 尝试解析综合建议："建议调整：将"画面态势"维度设为【X】分"
+            const suggestRegex = /建议调整[：:].*?画面态势.*?[\[【]?\s*(\d+)\s*[\]】]?\s*分/;
+            const suggestMatch = text.match(suggestRegex);
+            if (suggestMatch) {
+                const targetVal = Math.max(0, Math.min(100, parseInt(suggestMatch[1])));
+                const currentScore = parseFloat(document.getElementById('trendScore').textContent);
+                if (currentScore > 0 && currentScore !== 50) {
+                    const scale = targetVal / currentScore;
+                    ['attack', 'control', 'chance', 'defense', 'momentum'].forEach(key => {
+                        const slider = document.querySelector(`input[data-key="${key}"]`);
+                        if (slider) {
+                            const newVal = Math.round(Math.max(0, Math.min(100, parseInt(slider.value) * scale)));
+                            slider.value = newVal;
+                            document.getElementById(`val-${key}`).textContent = newVal;
+                        }
+                    });
+                }
+                parsedCount++;
+            }
+
+            if (parsedCount > 0) {
+                updateTrendScore();
+            } else {
+                showError('未能自动解析 AI 结果，请手动调整滑块，或检查格式是否为："进攻威胁：主队 XX 分"');
+            }
+        }
+
+        function applyVisualAnalysis() {
+            const score = parseFloat(document.getElementById('trendScore').textContent);
+            appliedVisualScore = score / 100; // 转为 0-1 区间
+            visualApplied = true;
+
+            // 重新计算胜率
+            calculateAndShowWinRate();
+
+            // 视觉反馈
+            const scoreEl = document.getElementById('trendScore');
+            scoreEl.style.color = '#1b5e20';
+            scoreEl.style.fontSize = '1.6rem';
+            setTimeout(() => {
+                scoreEl.style.color = '';
+                scoreEl.style.fontSize = '';
+            }, 2000);
+        }
+
+        function resetVisualAnalysis() {
+            // 重置滑块到中间值
+            ['attack', 'control', 'chance', 'defense', 'momentum'].forEach(key => {
+                const slider = document.querySelector(`input[data-key="${key}"]`);
+                if (slider) {
+                    slider.value = 50;
+                    document.getElementById(`val-${key}`).textContent = '50';
+                }
+            });
+            updateTrendScore();
+
+            // 清除 AI 输入文本
+            document.getElementById('aiAnalysisInput').value = '';
+
+            // 取消应用
+            visualApplied = false;
+            appliedVisualScore = 0.5;
+            calculateAndShowWinRate();
+        }
+
+        // ===================== 直播源配置（供用户设置） =====================
+
+        // 页面加载时读取已保存的直播源
+        document.addEventListener('DOMContentLoaded', () => {
+            // 已有初始化逻辑保留...
+            // 额外读取直播源
+            const savedUrl = localStorage.getItem('live_stream_url');
+            if (savedUrl) {
+                document.getElementById('liveUrlInput').value = savedUrl;
+                document.getElementById('liveUrlStatus').innerHTML = `✅ 已设置直播源: <a href="${savedUrl}" target="_blank">${savedUrl}</a>`;
+            }
+        });
+
+        function saveLiveUrl() {
+            const url = document.getElementById('liveUrlInput').value.trim();
+            if (!url) {
+                showError('请输入直播网址');
+                return;
+            }
+            // 简单验证 URL 格式
+            try {
+                new URL(url);
+            } catch {
+                showError('❌ 网址格式不正确，请检查');
+                return;
+            }
+            localStorage.setItem('live_stream_url', url);
+            document.getElementById('liveUrlStatus').innerHTML =
+                `✅ 已保存直播源: <a href="${url}" target="_blank" style="color:var(--primary);">${url}</a>
+                 <br><span style="font-size:0.7rem;">⏰ 请告知 AI（我）已设置直播源，我将创建自动化任务</span>`;
+            showError('✅ 直播源已保存！告知我后我会设置全自动任务');
+        }
+
+        function testLiveUrl() {
+            const url = document.getElementById('liveUrlInput').value.trim();
+            if (!url) {
+                showError('请先输入直播网址');
+                return;
+            }
+            const statusEl = document.getElementById('liveUrlStatus');
+            statusEl.innerHTML = '⏳ 正在测试连接...';
+            // 使用 fetch 测试是否能访问（仅检查可达性，不跨域）
+            fetch(url, { mode: 'no-cors' })
+                .then(() => {
+                    statusEl.innerHTML = `✅ 直播源可访问: <a href="${url}" target="_blank">${url}</a>
+                                         <br><span style="font-size:0.7rem;color:green;">网站可达，可以设置全自动任务</span>`;
+                    showError('✅ 直播网站可达，可以设置自动任务了');
+                })
+                .catch(() => {
+                    statusEl.innerHTML = `⚠️ 无法直接测试（浏览器限制跨域），但可能是正常的。<br>
+                        <span style="font-size:0.7rem;">你可以在新标签页手动打开验证: <a href="${url}" target="_blank">打开直播</a></span>`;
+                    showError('⚠️ 浏览器无法直接测试直播源，请手动在新标签页打开确认');
+                });
+        }
+
+        // 供 AI 自动化读取直播源
+        window.autoGetLiveUrl = function() {
+            return localStorage.getItem('live_stream_url') || '';
+        };
+
+        // ===================== AI 自动接口（供 agent-browser 调用） =====================
+
+        /**
+         * 一键自动填充+应用分析
+         * @param {Object} data - { attack: 65, control: 55, chance: 70, defense: 45, momentum: 60 }
+         * 各维度取值范围 0-100，>50 表示主队占优，<50 表示客队占优
+         */
+        window.autoFillVisualAnalysis = function(data) {
+            // 显示自动模式标记
+            document.getElementById('autoModeBadge').style.display = 'inline-block';
+
+            const keys = ['attack', 'control', 'chance', 'defense', 'momentum'];
+            keys.forEach(key => {
+                if (data[key] !== undefined) {
+                    const val = Math.max(0, Math.min(100, Math.round(data[key])));
+                    const slider = document.querySelector(`input[data-key="${key}"]`);
+                    if (slider) {
+                        slider.value = val;
+                        const display = document.getElementById(`val-${key}`);
+                        if (display) display.textContent = val;
+                    }
+                }
+            });
+
+            // 更新趋势分数
+            updateTrendScore();
+            // 自动应用分析
+            applyVisualAnalysis();
+
+            return {
+                status: 'ok',
+                message: '画面态势分析已自动填充并应用',
+                trendScore: document.getElementById('trendScore').textContent,
+                trendDirection: document.getElementById('trendDirection').textContent
+            };
+        };
+
+        /**
+         * 仅填充滑块，不应用（供分步操作使用）
+         */
+        window.autoSetSliders = function(data) {
+            const keys = ['attack', 'control', 'chance', 'defense', 'momentum'];
+            keys.forEach(key => {
+                if (data[key] !== undefined) {
+                    const val = Math.max(0, Math.min(100, Math.round(data[key])));
+                    const slider = document.querySelector(`input[data-key="${key}"]`);
+                    if (slider) {
+                        slider.value = val;
+                        const display = document.getElementById(`val-${key}`);
+                        if (display) display.textContent = val;
+                    }
+                }
+            });
+            updateTrendScore();
+            return {
+                status: 'ok',
+                message: '滑块已填充',
+                trendScore: document.getElementById('trendScore').textContent
+            };
+        };
+
+        /**
+         * 应用当前滑块分析
+         */
+        window.autoApplyAnalysis = function() {
+            document.getElementById('autoModeBadge').style.display = 'inline-block';
+            applyVisualAnalysis();
+            return { status: 'ok', message: '分析已应用' };
+        };
+
+        /**
+         * 重置画面分析
+         */
+        window.autoResetAnalysis = function() {
+            resetVisualAnalysis();
+            document.getElementById('autoModeBadge').style.display = 'none';
+            return { status: 'ok', message: '画面分析已重置' };
+        };
+
+        /**
+         * 获取当前比赛和分析状态
+         */
+        window.autoGetStatus = function() {
+            const status = {
+                matchSelected: !!selectedMatch,
+                visualApplied: visualApplied,
+                trendScore: parseFloat(document.getElementById('trendScore')?.textContent || 50),
+                sliders: {}
+            };
+            ['attack', 'control', 'chance', 'defense', 'momentum'].forEach(key => {
+                const slider = document.querySelector(`input[data-key="${key}"]`);
+                if (slider) status.sliders[key] = parseInt(slider.value);
+            });
+            if (selectedMatch) {
+                status.homeTeam = selectedMatch.homeTeam?.name || '';
+                status.awayTeam = selectedMatch.awayTeam?.name || '';
+                status.homeScore = selectedMatch.score?.fullTime?.home;
+                status.awayScore = selectedMatch.score?.fullTime?.away;
+                status.matchStatus = selectedMatch.status || '';
+            }
+            return status;
+        };
+
+        /**
+         * 获取完整的胜率面板数据
+         */
+        window.autoGetWinRates = function() {
+            return {
+                homeRate: document.getElementById('homeRate')?.textContent || '',
+                awayRate: document.getElementById('awayRate')?.textContent || '',
+                drawRate: document.getElementById('drawRate')?.textContent || '',
+                homeTeam: document.getElementById('homeRateLabel')?.textContent || '',
+                awayTeam: document.getElementById('awayRateLabel')?.textContent || '',
+                homeBarWidth: document.getElementById('homeBar')?.style?.width || '',
+                awayBarWidth: document.getElementById('awayBar')?.style?.width || ''
+            };
+        };
+    </script>
+</body>
+</html>
