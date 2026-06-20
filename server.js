@@ -2,11 +2,16 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const url = require('url');
 
 const PORT = 5500;
 const API_BASE = 'https://api.football-data.org/v4';
 
-// 静态文件服务
+// 最新分析数据存储（实时推送用）
+let latestAnalysis = null;
+let analysisId = 0;
+
+// MIME 类型
 const MIME_TYPES = {
     '.html': 'text/html; charset=utf-8',
     '.css': 'text/css',
@@ -38,72 +43,106 @@ function serveStaticFile(res, filePath) {
     });
 }
 
-// 代理 API 请求
 function proxyAPI(res, apiPath, apiKey) {
     const url = `${API_BASE}${apiPath}`;
-    console.log(`[代理] 转发请求: ${url}`);
-
+    console.log(`[代理] ${url}`);
     https.get(url, {
-        headers: {
-            'X-Auth-Token': apiKey,
-            'Accept': 'application/json',
-        }
+        headers: { 'X-Auth-Token': apiKey, 'Accept': 'application/json' }
     }, (apiRes) => {
         let data = '';
         apiRes.on('data', chunk => data += chunk);
         apiRes.on('end', () => {
-            console.log(`[代理] 响应状态: ${apiRes.statusCode}`);
             res.writeHead(apiRes.statusCode, {
                 'Content-Type': 'application/json; charset=utf-8',
                 'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'X-Auth-Token',
             });
             res.end(data);
         });
     }).on('error', (e) => {
-        console.error(`[代理] 错误: ${e.message}`);
-        res.writeHead(500, {
-            'Content-Type': 'application/json; charset=utf-8',
-            'Access-Control-Allow-Origin': '*',
-        });
-        res.end(JSON.stringify({ message: `代理请求失败: ${e.message}` }));
+        res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ message: `代理失败: ${e.message}` }));
+    });
+}
+
+// 收集 POST 请求体
+function collectBody(req, cb) {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+        try { cb(JSON.parse(body)); }
+        catch { cb(null); }
     });
 }
 
 const server = http.createServer((req, res) => {
-    // 设置 CORS 头
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', 'X-Auth-Token, Content-Type');
 
-    // 处理 OPTIONS 预检请求
     if (req.method === 'OPTIONS') {
         res.writeHead(204);
         res.end();
         return;
     }
 
-    const url = new URL(req.url, `http://localhost:${PORT}`);
-    const pathname = url.pathname;
+    const parsed = new URL(req.url, `http://localhost:${PORT}`);
+    const pathname = parsed.pathname;
 
-    // API 代理路由：/api/proxy?path=/competitions&key=xxx
+    // ===== 实时分析推送接口（AI调用） =====
+    if (pathname === '/api/analysis/push' && req.method === 'POST') {
+        collectBody(req, (body) => {
+            if (!body || !body.data) {
+                res.writeHead(400);
+                res.end(JSON.stringify({ error: '需要 data 字段' }));
+                return;
+            }
+            analysisId++;
+            latestAnalysis = {
+                id: analysisId,
+                timestamp: new Date().toISOString(),
+                data: body.data
+            };
+            console.log(`[分析推送 #${analysisId}] ${JSON.stringify(body.data)}`);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'ok', id: analysisId }));
+        });
+        return;
+    }
+
+    // ===== 获取最新分析（网页轮询用） =====
+    if (pathname === '/api/analysis/latest') {
+        const lastId = parseInt(parsed.searchParams.get('since') || '0');
+        if (lastId > 0 && latestAnalysis && latestAnalysis.id <= lastId) {
+            // 没有新数据
+            res.writeHead(204);
+            res.end();
+            return;
+        }
+        res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache'
+        });
+        res.end(JSON.stringify(latestAnalysis || { id: 0, data: null }));
+        return;
+    }
+
+    // API 代理
     if (pathname === '/api/proxy') {
-        const apiPath = url.searchParams.get('path');
-        const apiKey = url.searchParams.get('key');
+        const apiPath = parsed.searchParams.get('path');
+        const apiKey = parsed.searchParams.get('key');
         if (!apiPath || !apiKey) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: '缺少 path 或 key 参数' }));
+            res.end(JSON.stringify({ message: '缺少参数' }));
             return;
         }
         proxyAPI(res, apiPath, apiKey);
         return;
     }
 
-    // API Key 验证路由
     if (pathname === '/api/verify') {
-        const apiKey = url.searchParams.get('key');
+        const apiKey = parsed.searchParams.get('key');
         if (!apiKey) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: '缺少 key 参数' }));
+            res.end(JSON.stringify({ message: '缺少 key' }));
             return;
         }
         proxyAPI(res, '/competitions', apiKey);
@@ -117,8 +156,8 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
     console.log(`========================================`);
-    console.log(`  ⚽ 足球胜率分析工具 - 本地服务器`);
+    console.log(`  ⚽ 足球胜率分析工具`);
     console.log(`  🌐 http://127.0.0.1:${PORT}`);
-    console.log(`  🔄 API 代理已启用`);
+    console.log(`  🔄 实时分析推送已启用`);
     console.log(`========================================`);
 });

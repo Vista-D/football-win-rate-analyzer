@@ -1454,12 +1454,15 @@
                     <td>${t.won}</td>
                     <td>${t.draw}</td>
                     <td>${t.lost}</td>
+                    <td><b>${t.goalsFor || 0}</b></td>
+                    <td>${t.goalsAgainst || 0}</td>
+                    <td style="color:${(t.goalDifference || 0) > 0 ? 'var(--primary)' : (t.goalDifference || 0) < 0 ? '#c62828' : 'inherit'}">${t.goalDifference > 0 ? '+' : ''}${t.goalDifference || 0}</td>
                     <td><b>${t.points}</b></td>
                 </tr>`;
             }).join('');
             container.innerHTML = `
                 <table class="data-table">
-                    <tr><th>排名</th><th>球队</th><th>赛</th><th>胜</th><th>平</th><th>负</th><th>积分</th></tr>
+                    <tr><th>排名</th><th>球队</th><th>赛</th><th>胜</th><th>平</th><th>负</th><th>进</th><th>失</th><th>净胜</th><th>积分</th></tr>
                     ${rows}
                 </table>
             `;
@@ -1497,77 +1500,158 @@
             container.innerHTML = items;
         }
 
-        // ===================== 胜率计算 =====================
+        // ===================== 胜率计算（改进算法 v2.0） =====================
+        // 基于研究：加权近期战绩 + 进球/防守能力 + 更合理的平局概率
+
+        /**
+         * 加权近期战绩：最近的比赛权重更高
+         * 权重分布：[35%, 25%, 20%, 12%, 8%] 从新到旧
+         */
+        function calcFormScore(matches, teamId) {
+            if (!matches.length) return 0.5;
+            const weights = [0.35, 0.25, 0.20, 0.12, 0.08];
+            let totalPoints = 0, totalWeight = 0;
+            matches.forEach((m, i) => {
+                const isHome = m.homeTeam.id === teamId;
+                const ts = isHome ? m.score.fullTime.home : m.score.fullTime.away;
+                const os = isHome ? m.score.fullTime.away : m.score.fullTime.home;
+                let pts = 0;
+                if (ts > os) pts = 3;
+                else if (ts === os) pts = 1;
+                const w = weights[i] || 0.05;
+                totalPoints += pts * w;
+                totalWeight += w * 3;
+            });
+            return totalWeight > 0 ? totalPoints / totalWeight : 0.5;
+        }
+
+        function getStanding(teamId) {
+            if (!standingsData || !standingsData.standings) return null;
+            return standingsData.standings[0]?.table?.find(t => t.team.id === teamId) || null;
+        }
+
+        function calcH2HScore(teamId) {
+            if (!h2hMatches.length) return 0.5;
+            let points = 0;
+            h2hMatches.forEach(m => {
+                const isHome = m.homeTeam.id === teamId;
+                const ts = isHome ? m.score.fullTime.home : m.score.fullTime.away;
+                const os = isHome ? m.score.fullTime.away : m.score.fullTime.home;
+                if (ts > os) points += 3;
+                else if (ts === os) points += 1;
+            });
+            return points / (h2hMatches.length * 3);
+        }
+
+        /**
+         * 计算进攻能力（场均进球 / 联赛平均）
+         */
+        function calcAttackScore(teamId) {
+            const st = getStanding(teamId);
+            if (!st || !st.playedGames || st.playedGames < 3) return 0.5;
+            const table = standingsData?.standings?.[0]?.table || [];
+            const avgGoals = table.reduce((s, t) => s + (t.goalsFor || 0), 0) / Math.max(table.length, 1);
+            const teamGoalsPerGame = (st.goalsFor || 0) / st.playedGames;
+            const ratio = avgGoals > 0 ? teamGoalsPerGame / avgGoals : 0.5;
+            return Math.max(0.05, Math.min(0.95, ratio * 0.5));
+        }
+
+        /**
+         * 计算防守能力（联赛平均失球 / 场均失球）
+         */
+        function calcDefenseScore(teamId) {
+            const st = getStanding(teamId);
+            if (!st || !st.playedGames || st.playedGames < 3) return 0.5;
+            const table = standingsData?.standings?.[0]?.table || [];
+            const avgAgainst = table.reduce((s, t) => s + (t.goalsAgainst || 0), 0) / Math.max(table.length, 1);
+            const teamAgainstPerGame = (st.goalsAgainst || 0) / st.playedGames;
+            // 失球越少得分越高
+            const ratio = avgAgainst > 0 ? avgAgainst / Math.max(teamAgainstPerGame, 0.1) : 1;
+            return Math.max(0.05, Math.min(0.95, ratio * 0.45));
+        }
+
         function calculateAndShowWinRate() {
             if (!selectedMatch) return;
 
             const homeId = selectedMatch.homeTeam.id;
             const awayId = selectedMatch.awayTeam.id;
 
-            // 1. 近期战绩分 (25%)
+            // 1. 近期战绩（加权） - 20%
             const homeFormScore = calcFormScore(homeForm, homeId);
             const awayFormScore = calcFormScore(awayForm, awayId);
 
-            // 2. 联赛排名分 (20%)
+            // 2. 进球能力（新） - 15%
+            const homeAttackScore = calcAttackScore(homeId);
+            const awayAttackScore = calcAttackScore(awayId);
+
+            // 3. 防守能力（新） - 12%
+            const homeDefenseScore = calcDefenseScore(homeId);
+            const awayDefenseScore = calcDefenseScore(awayId);
+
+            // 4. 主客场优势 - 12%（研究显示主场胜率约45-48%，主场优势约5%）
+            const homeAdv = 0.55;
+            const awayAdv = 0.45;
+
+            // 5. 联赛排名 - 10%
             const homeStanding = getStanding(homeId);
             const awayStanding = getStanding(awayId);
             const totalTeams = standingsData?.standings?.[0]?.table?.length || 20;
-            const homeRankScore = homeStanding ? (totalTeams - homeStanding.position + 1) / totalTeams : 0.5;
-            const awayRankScore = awayStanding ? (totalTeams - awayStanding.position + 1) / totalTeams : 0.5;
+            // 使用指数衰减使排名差距更明显
+            const homeRankScore = homeStanding ? Math.pow((totalTeams - homeStanding.position + 1) / totalTeams, 0.7) : 0.5;
+            const awayRankScore = awayStanding ? Math.pow((totalTeams - awayStanding.position + 1) / totalTeams, 0.7) : 0.5;
 
-            // 3. 历史交锋 (15%)
+            // 6. 历史交锋 - 8%
             const homeH2H = calcH2HScore(homeId);
             const awayH2H = calcH2HScore(awayId);
 
-            // 4. 主客场优势 (15%) - 主队加分
-            const homeAdv = 0.65;
-            const awayAdv = 0.35;
-
-            // 5. 攻防数据 (15%) - 用积分率近似
-            const homeAttack = homeStanding ? homeStanding.points / (homeStanding.playedGames * 3 || 1) : 0.5;
-            const awayAttack = awayStanding ? awayStanding.points / (awayStanding.playedGames * 3 || 1) : 0.5;
-
-            // 6. 实时状态 (10%)
+            // 7. 实时比分 - 8%
             let homeLive = 0.5, awayLive = 0.5;
             if (selectedMatch.status === 'LIVE' || selectedMatch.status === 'IN_PLAY') {
                 const hs = selectedMatch.score?.fullTime?.home ?? 0;
                 const as = selectedMatch.score?.fullTime?.away ?? 0;
-                if (hs > as) { homeLive = 0.8; awayLive = 0.2; }
-                else if (hs < as) { homeLive = 0.2; awayLive = 0.8; }
-                else { homeLive = 0.5; awayLive = 0.5; }
+                const diff = hs - as;
+                // 比分差距越大，对胜率影响越明显（非线性）
+                if (diff > 0) homeLive = Math.min(0.9, 0.5 + diff * 0.12);
+                else if (diff < 0) awayLive = Math.min(0.9, 0.5 + Math.abs(diff) * 0.12);
             }
 
-            // 7. 画面态势 (10%) - 来自截图分析
+            // 8. 画面态势 - 15%
             const homeVisual = visualApplied ? appliedVisualScore : 0.5;
             const awayVisual = visualApplied ? (1 - appliedVisualScore) : 0.5;
 
-            // 加权计算（新权重：加入画面态势10%，其他维度等比缩减）
+            // 新权重体系
             const homeTotal =
-                homeFormScore * 0.22 +
-                homeRankScore * 0.18 +
-                homeH2H * 0.14 +
-                homeAdv * 0.14 +
-                homeAttack * 0.14 +
+                homeFormScore * 0.20 +
+                homeAttackScore * 0.15 +
+                homeDefenseScore * 0.12 +
+                homeAdv * 0.12 +
+                homeRankScore * 0.10 +
+                homeH2H * 0.08 +
                 homeLive * 0.08 +
-                homeVisual * 0.10;
+                homeVisual * 0.15;
 
             const awayTotal =
-                awayFormScore * 0.22 +
-                awayRankScore * 0.18 +
-                awayH2H * 0.14 +
-                awayAdv * 0.14 +
-                awayAttack * 0.14 +
+                awayFormScore * 0.20 +
+                awayAttackScore * 0.15 +
+                awayDefenseScore * 0.12 +
+                awayAdv * 0.12 +
+                awayRankScore * 0.10 +
+                awayH2H * 0.08 +
                 awayLive * 0.08 +
-                awayVisual * 0.10;
+                awayVisual * 0.15;
 
             const total = homeTotal + awayTotal;
-            const homeRate = Math.round((homeTotal / total) * 100);
-            const awayRate = Math.round((awayTotal / total) * 100);
-            const drawRate = Math.max(5, Math.round(30 - Math.abs(homeRate - awayRate) * 0.3));
+            const homeProb = homeTotal / total;
+            const awayProb = awayTotal / total;
 
-            // 归一化（扣除平局）
+            // 改进的平局概率：两队的实力越接近，平局概率越高
+            const diff = Math.abs(homeProb - awayProb);
+            // 平局概率在15%-32%之间，实力越接近平局越高
+            const drawRate = Math.round(Math.max(12, Math.min(32, 32 - diff * 35)));
+
+            // 归一化
             const remain = 100 - drawRate;
-            const homeFinal = Math.round((homeRate / (homeRate + awayRate)) * remain);
+            const homeFinal = Math.round((homeProb / (homeProb + awayProb)) * remain);
             const awayFinal = remain - homeFinal;
 
             // 显示
@@ -1584,10 +1668,11 @@
             // 各维度对比
             const dims = [
                 { name: '近期战绩', home: homeFormScore, away: awayFormScore },
+                { name: '进球能力', home: homeAttackScore, away: awayAttackScore },
+                { name: '防守能力', home: homeDefenseScore, away: awayDefenseScore },
                 { name: '联赛排名', home: homeRankScore, away: awayRankScore },
                 { name: '历史交锋', home: homeH2H, away: awayH2H },
                 { name: '主客场', home: homeAdv, away: awayAdv },
-                { name: '攻防数据', home: homeAttack, away: awayAttack },
             ];
             if (selectedMatch.status === 'LIVE' || selectedMatch.status === 'IN_PLAY') {
                 dims.push({ name: '实时状态', home: homeLive, away: awayLive });
@@ -1619,37 +1704,6 @@
                     </div>
                 `;
             }).join('');
-        }
-
-        function calcFormScore(matches, teamId) {
-            if (!matches.length) return 0.5;
-            let points = 0;
-            matches.forEach(m => {
-                const isHome = m.homeTeam.id === teamId;
-                const ts = isHome ? m.score.fullTime.home : m.score.fullTime.away;
-                const os = isHome ? m.score.fullTime.away : m.score.fullTime.home;
-                if (ts > os) points += 3;
-                else if (ts === os) points += 1;
-            });
-            return points / (matches.length * 3);
-        }
-
-        function getStanding(teamId) {
-            if (!standingsData || !standingsData.standings) return null;
-            return standingsData.standings[0]?.table?.find(t => t.team.id === teamId) || null;
-        }
-
-        function calcH2HScore(teamId) {
-            if (!h2hMatches.length) return 0.5;
-            let points = 0;
-            h2hMatches.forEach(m => {
-                const isHome = m.homeTeam.id === teamId;
-                const ts = isHome ? m.score.fullTime.home : m.score.fullTime.away;
-                const os = isHome ? m.score.fullTime.away : m.score.fullTime.home;
-                if (ts > os) points += 3;
-                else if (ts === os) points += 1;
-            });
-            return points / (h2hMatches.length * 3);
         }
 
         // ===================== 标签页切换 =====================
@@ -2094,6 +2148,53 @@
                 awayBarWidth: document.getElementById('awayBar')?.style?.width || ''
             };
         };
+
+        // ===================== URL参数自动填充（供AI远程调用） =====================
+        // 格式: ?fill=attack,70,control,60,chance,75,defense,50,momentum,80
+        (function() {
+            const params = new URLSearchParams(window.location.search);
+            const fill = params.get('fill');
+            if (fill) {
+                const parts = fill.split(',').map(s => s.trim());
+                const data = {};
+                for (let i = 0; i < parts.length - 1; i += 2) {
+                    data[parts[i]] = parseFloat(parts[i + 1]);
+                }
+                if (data.attack !== undefined) {
+                    setTimeout(() => {
+                        window.autoFillVisualAnalysis(data);
+                    }, 1000);
+                }
+            }
+        })();
+
+        // ===================== 实时分析轮询（每15秒检查最新分析） =====================
+        (function startAnalysisPolling() {
+            let lastId = 0;
+            async function poll() {
+                try {
+                    const res = await fetch(`/api/analysis/latest?since=${lastId}`);
+                    if (res.status === 200) {
+                        const result = await res.json();
+                        if (result && result.data && result.id > lastId) {
+                            lastId = result.id;
+                            // 显示自动模式标记
+                            document.getElementById('autoModeBadge').style.display = 'inline-block';
+                            // 自动填充分析
+                            window.autoFillVisualAnalysis(result.data);
+                            console.log(`[实时分析] #${result.id} 已自动更新`);
+                        }
+                    }
+                } catch (e) {
+                    // 静默失败，下次继续
+                }
+            }
+            // 首次延迟3秒，之后每15秒轮询
+            setTimeout(() => {
+                poll();
+                setInterval(poll, 15000);
+            }, 3000);
+        })();
     </script>
 </body>
 </html>
